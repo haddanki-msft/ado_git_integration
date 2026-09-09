@@ -1,0 +1,5 @@
+name: ADO Test Publisher
+description: Development skeleton for the ADO test publisher; does not publish results yet.
+runs:
+  using: node24
+  main: index.js
