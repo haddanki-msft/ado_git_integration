@@ -7,9 +7,65 @@ permissions:
   contents: read
 
 jobs:
-  test-action:
+  unit-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Execute this repository's action
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test
+
+  test-action:
+    needs: unit-tests
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check authentication configuration
+        shell: bash
+        env:
+          ENTRA_CLIENT_ID: ${{ secrets.ENTRA_CLIENT_ID }}
+          ENTRA_TENANT_ID: ${{ secrets.ENTRA_TENANT_ID }}
+          ADO_ORGANIZATION: ${{ vars.ADO_ORGANIZATION }}
+          ADO_PROJECT: ${{ vars.ADO_PROJECT }}
+        run: |
+          set -euo pipefail
+          for name in ENTRA_CLIENT_ID ENTRA_TENANT_ID ADO_ORGANIZATION ADO_PROJECT; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing configuration: $name. See README setup."
+              exit 1
+            fi
+          done
+      - name: Azure login using GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.ENTRA_CLIENT_ID }}
+          tenant-id: ${{ secrets.ENTRA_TENANT_ID }}
+          audience: api://AzureADTokenExchange
+          allow-no-subscriptions: true
+      - name: Obtain Azure DevOps bearer token
+        id: ado-token
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(az account get-access-token \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+            --query accessToken --output tsv --only-show-errors)"
+          if [[ -z "$token" || "$token" == *$'\n'* || "$token" == *$'\r'* ]]; then
+            echo "::error::Azure CLI did not return a valid single-line access token."
+            exit 1
+          fi
+          mask="${token//'%'/'%25'}"
+          echo "::add-mask::$mask"
+          printf 'access-token=%s\n' "$token" >> "$GITHUB_OUTPUT"
+          unset token mask
+      - name: Check ADO project access (read-only)
         uses: ./
+        with:
+          organization: ${{ vars.ADO_ORGANIZATION }}
+          project: ${{ vars.ADO_PROJECT }}
+          access-token: ${{ steps.ado-token.outputs.access-token }}

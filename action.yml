@@ -1,5 +1,15 @@
 name: ADO Test Publisher
-description: Development skeleton for the ADO test publisher; does not publish results yet.
+description: Check federated Azure DevOps access before implementing test publication.
+inputs:
+  organization:
+    description: Azure DevOps organization name (not a URL).
+    required: true
+  project:
+    description: Azure DevOps project name or ID.
+    required: true
+  access-token:
+    description: Short-lived Entra bearer token issued for Azure DevOps.
+    required: true
 runs:
   using: node24
   main: index.js
